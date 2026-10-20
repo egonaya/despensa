@@ -1,29 +1,34 @@
 // Vista "Plan": menú semanal, batch cooking, víspera y seguimiento del día.
+//
+// Puede haber dos menús a la vez: el de la semana en curso ('plan') y el de la semana
+// siguiente ('nextPlan'), que se prepara antes de ir a comprar sin borrar el actual.
 
 import { $, esc, SLOTS, DOW, fmtDay, fmtDate, todayISO, addDays, dow, dec, r0, toast } from '../util.js';
-import { PREP } from '../recipes.js';
 
 let app;
+let tab = 'plan'; // pestaña visible: 'plan' (esta semana) o 'nextPlan' (la siguiente)
 
 export function init(a) {
   app = a;
   const el = $('#view-plan');
   el.addEventListener('click', onClick);
   el.addEventListener('change', onChange);
+  el.addEventListener('submit', onSubmit);
 }
 
 const S = () => app.state;
 const P = () => app.P;
 const clone = (x) => structuredClone(x);
 const mealLabel = (date, slot) => `${DOW[dow(date)]} ${SLOTS[slot].toLowerCase()}`;
+const getPlan = (w) => S()[w];
+const visible = () => (tab === 'nextPlan' && S().nextPlan ? 'nextPlan' : 'plan');
+const isActive = (plan) => plan && P().planEnd(plan) >= todayISO();
 
 function defaultStart() {
   const today = todayISO();
-  const plan = S().plan;
-  if (plan) {
-    const next = addDays(plan.start, 7);
-    if (next >= today) return next;
-  }
+  const { plan, nextPlan } = S();
+  if (visible() === 'nextPlan') return nextPlan.start;
+  if (isActive(plan)) return addDays(P().planEnd(plan), 1);
   const d = dow(today);
   if (d === 1) return today;
   return addDays(today, d === 0 ? 1 : 8 - d);
@@ -35,14 +40,24 @@ function fmtMinutes(min) {
   return h ? `${h} h${m ? ` ${m} min` : ''}` : `${m} min`;
 }
 
-export function hasTasksToday() {
-  const plan = S().plan;
-  if (!plan) return false;
-  const prep = P().buildPrep(plan, app.ctx());
+// Tareas de hoy de cualquiera de los dos menús (el batch del domingo es del menú siguiente).
+function todayTasks() {
   const today = todayISO();
-  const tonight = (prep.nights.get(today) || []).some((t) => !plan.prepDone?.[t.id]);
-  const batch = prep.batchDate === today && prep.batch.some((t) => !plan.prepDone?.[t.id]);
-  return tonight || batch;
+  const out = { batch: null, tonight: [] };
+  for (const w of ['plan', 'nextPlan']) {
+    const plan = getPlan(w);
+    if (!plan) continue;
+    const prep = P().buildPrep(plan, app.ctx());
+    if (prep.batchDate === today && prep.batch.length) out.batch = { w, prep, plan };
+    (prep.nights.get(today) || []).forEach((t) => out.tonight.push({ w, t, plan }));
+  }
+  return out;
+}
+
+export function hasTasksToday() {
+  const { batch, tonight } = todayTasks();
+  return tonight.some(({ t, plan }) => !plan.prepDone?.[t.id])
+    || !!(batch && batch.prep.batch.some((t) => !batch.plan.prepDone?.[t.id]));
 }
 
 // ---------- render ----------
@@ -59,21 +74,22 @@ function macroBars(m, cfg) {
 const macroChips = (m) =>
   `<span class="pill num">${r0(m.kcal)} kcal</span><span class="pill mp num">P ${r0(m.p)}</span><span class="pill mc num">H ${r0(m.c)}</span><span class="pill mf num">G ${r0(m.f)}</span>`;
 
-function genControls(label = 'Generar menú') {
+function genControls(label, help) {
   return `
     <form class="card gen" data-form="generate">
       <div class="grid2">
         <label>Empieza el<input type="date" name="start" value="${defaultStart()}" required></label>
         <button class="btn primary" type="submit">${label}</button>
       </div>
-      <p class="muted small">Usa primero lo que tienes en casa y lo que caduca antes. Las comidas de días laborables se quedan en ${S().config.time.comida.work} min o menos al llegar.</p>
+      <p class="muted small">${help}</p>
     </form>`;
 }
 
 export function render() {
   const el = $('#view-plan');
-  const { plan, config, products, supplements } = S();
+  const { plan, nextPlan, config, products, supplements } = S();
   const ctx = app.ctx();
+  const work = config.time.comida.work;
 
   if (!plan) {
     const linked = products.filter((p) => p.foodId && p.batches.length).length;
@@ -88,55 +104,86 @@ export function render() {
         <li class="${supplements.length ? 'ok' : ''}"><button class="linkbtn" data-act="goto" data-page="supplements">Añade tus suplementos</button> <span class="muted small">(sus macros se descuentan)</span></li>
         <li class="${linked ? 'ok' : ''}">Escanea o añade lo que tienes en casa <span class="muted small">(${linked} productos listos para el menú)</span></li>
       </ul>
-      ${genControls()}`;
+      ${genControls('Generar menú', `Usa primero lo que tienes en casa y lo que caduca antes. Las comidas de días laborables se quedan en ${work} min o menos al llegar.`)}`;
     return;
   }
 
-  const prep = P().buildPrep(plan, ctx);
+  const w = visible();
+  const shown = getPlan(w);
+  const prep = P().buildPrep(shown, ctx);
   const today = todayISO();
-  const t = P().foodTargets(config, supplements);
-  let html = `<div class="row between"><h2 class="h2">${fmtDate(plan.start)} – ${fmtDate(addDays(plan.start, 6))}</h2></div>`;
+  let html = '';
 
-  // Hoy
-  const todayDay = plan.days.find((d) => d.date === today);
-  const tonight = prep.nights.get(today) || [];
-  if (todayDay || prep.batchDate === today || tonight.length) {
-    html += `<div class="card today"><h3>Hoy</h3>`;
-    if (prep.batchDate === today) html += `<p><b>Toca batch cooking</b> (≈ ${fmtMinutes(prep.batchMinutes)}). Lo tienes abajo, paso a paso.</p>`;
-    if (todayDay) {
-      html += todayDay.meals.map((m, mi) => `
-        <button class="today-meal ${m.done ? 'done' : ''}" data-act="open-meal" data-day="${plan.days.indexOf(todayDay)}" data-meal="${mi}">
-          <span class="lbl">${SLOTS[m.slot]}</span><span class="grow">${esc(m.off ? m.off.desc : m.name)}</span>
-          ${m.done ? '<span class="tag ok">Hecha</span>' : m.off ? '' : `<span class="tag">${ctx.recipeMap.get(m.recipeId)?.min ?? '?'} min</span>`}
-        </button>`).join('');
-    }
-    if (tonight.length) html += `<p class="muted small" style="margin-top:8px">Esta noche: ${tonight.map((x) => esc(x.task)).join(' · ')}</p>`;
-    html += `</div>`;
+  if (nextPlan) {
+    html += `
+      <div class="segmented" role="tablist">
+        <button role="tab" data-tab="plan" aria-selected="${w === 'plan'}">Esta semana <span class="muted small">${fmtDate(plan.start)}</span></button>
+        <button role="tab" data-tab="nextPlan" aria-selected="${w === 'nextPlan'}">Próxima <span class="muted small">${fmtDate(nextPlan.start)}</span></button>
+      </div>`;
   }
+  html += `<h2 class="h2">${fmtDate(shown.start)} – ${fmtDate(P().planEnd(shown))}</h2>`;
+  html += todayCard();
 
   // Batch cooking
   if (prep.batch.length) {
-    const done = prep.batch.filter((x) => plan.prepDone?.[x.id]).length;
+    const done = prep.batch.filter((x) => shown.prepDone?.[x.id]).length;
     html += `
       <details class="card batch" ${prep.batchDate >= today && done < prep.batch.length ? 'open' : ''}>
         <summary><div class="row between"><h3>Batch cooking · ${fmtDay(prep.batchDate)}</h3><span class="pill">≈ ${fmtMinutes(prep.batchMinutes)}</span></div>
         <p class="muted small">${done}/${prep.batch.length} hecho · horno, fuegos y arrocera a la vez</p></summary>
-        ${prep.batch.map((x) => taskRow(x, plan)).join('')}
+        ${prep.batch.map((x) => taskRow(x, shown, w)).join('')}
       </details>`;
   }
 
-  // Días
-  html += plan.days.map((d, di) => dayCard(d, di, prep, t)).join('');
-  html += `<h2 class="h2">Nuevo menú</h2><p class="muted small">Sustituye este. Lo que ya marcaste como hecho no se devuelve a la despensa.</p>${genControls('Generar otro menú')}`;
+  html += shown.days.map((d, di) => dayCard(d, di, prep, shown, w)).join('');
+
+  // Siguiente paso
+  if (w === 'nextPlan') {
+    html += `<h2 class="h2">Rehacer la semana siguiente</h2>
+      ${genControls('Generar otra vez', 'Sustituye solo el menú de la semana siguiente. La semana en curso no cambia.')}`;
+  } else if (nextPlan) {
+    html += `<div class="card"><p>Ya tienes preparado el menú de la semana siguiente.</p><button class="btn" data-tab="nextPlan">Ver la semana siguiente</button></div>`;
+  } else if (isActive(plan)) {
+    html += `<h2 class="h2">Preparar la semana siguiente</h2>
+      ${genControls('Generar menú', 'Esta semana se queda como está hasta el último día. Hazlo antes de ir a comprar: la lista de la compra suma lo que falta para lo que queda de esta semana y para la siguiente, y el batch cooking del domingo aparece en el menú nuevo.')}`;
+  } else {
+    html += `<h2 class="h2">Nuevo menú</h2>${genControls('Generar menú', `Las comidas de días laborables se quedan en ${work} min o menos al llegar.`)}`;
+  }
   el.innerHTML = html;
 }
 
-function taskRow(x, plan) {
+function todayCard() {
+  const today = todayISO();
+  const ctx = app.ctx();
+  const w = ['plan', 'nextPlan'].find((k) => getPlan(k)?.days.some((d) => d.date === today));
+  const plan = w && getPlan(w);
+  const todayDay = plan?.days.find((d) => d.date === today);
+  const { batch, tonight } = todayTasks();
+  if (!todayDay && !batch && !tonight.length) return '';
+
+  let html = `<div class="card today"><h3>Hoy</h3>`;
+  if (batch) {
+    const label = batch.w === visible() ? 'Lo tienes abajo, paso a paso.' : '';
+    html += `<p><b>Toca batch cooking</b> (≈ ${fmtMinutes(batch.prep.batchMinutes)}). ${label}</p>`;
+    if (batch.w !== visible()) html += `<button class="btn small" data-tab="${batch.w}">Ver el batch cooking</button>`;
+  }
+  if (todayDay) {
+    html += todayDay.meals.map((m, mi) => `
+      <button class="today-meal ${m.done ? 'done' : ''}" data-act="open-meal" data-plan="${w}" data-day="${plan.days.indexOf(todayDay)}" data-meal="${mi}">
+        <span class="lbl">${SLOTS[m.slot]}</span><span class="grow">${esc(m.off ? m.off.desc : m.name)}</span>
+        ${m.done ? '<span class="tag ok">Hecha</span>' : m.off ? '' : `<span class="tag">${ctx.recipeMap.get(m.recipeId)?.min ?? '?'} min</span>`}
+      </button>`).join('');
+  }
+  if (tonight.length) html += `<p class="muted small" style="margin-top:8px">Esta noche: ${tonight.map(({ t }) => esc(t.task)).join(' · ')}</p>`;
+  return html + `</div>`;
+}
+
+function taskRow(x, plan, w) {
   const qty = x.qty.filter((q) => q.g > 0).map((q) => `${esc(app.ctx().foods.get(q.food)?.name || q.food)} ${esc(app.qtyText(q.food, q.g))}`).join(', ');
   const meals = x.meals.map((m) => mealLabel(m.date, m.slot)).join(', ');
   return `
     <label class="task ${plan.prepDone?.[x.id] ? 'done' : ''}">
-      <input type="checkbox" data-prep="${esc(x.id)}" ${plan.prepDone?.[x.id] ? 'checked' : ''}>
+      <input type="checkbox" data-prep="${esc(x.id)}" data-plan="${w}" ${plan.prepDone?.[x.id] ? 'checked' : ''}>
       <span>
         <b>${esc(x.task)}</b>${x.min ? ` <span class="muted small">· ${x.min} min</span>` : ''}
         ${qty ? `<span class="small block">${qty}</span>` : ''}
@@ -145,8 +192,8 @@ function taskRow(x, plan) {
     </label>`;
 }
 
-function dayCard(d, di, prep, t) {
-  const { plan, config, supplements } = S();
+function dayCard(d, di, prep, plan, w) {
+  const { config, supplements } = S();
   const ctx = app.ctx();
   const today = todayISO();
   const m = P().dayMacros(d, ctx);
@@ -154,6 +201,7 @@ function dayCard(d, di, prep, t) {
   const isOpen = d.date === today || (di === 0 && today < plan.start);
   const tonight = prep.nights.get(d.date) || [];
   const night0 = di === 0 ? (prep.nights.get(addDays(d.date, -1)) || []) : [];
+  const at = `data-plan="${w}" data-day="${di}"`;
 
   let html = `
     <details class="day ${d.date < today ? 'past' : ''}" ${isOpen ? 'open' : ''}>
@@ -163,7 +211,7 @@ function dayCard(d, di, prep, t) {
       </summary>`;
 
   if (night0.length) {
-    html += `<div class="day-block"><div class="lbl">La noche anterior (${fmtDate(addDays(d.date, -1))})</div>${night0.map((x) => taskRow(x, plan)).join('')}</div>`;
+    html += `<div class="day-block"><div class="lbl">La noche anterior (${fmtDate(addDays(d.date, -1))})</div>${night0.map((x) => taskRow(x, plan, w)).join('')}</div>`;
   }
 
   html += d.meals.map((meal, mi) => {
@@ -172,36 +220,37 @@ function dayCard(d, di, prep, t) {
     const max = P().maxMinutes(config, meal.slot, d.date);
     return `
       <div class="meal ${meal.done ? 'done' : ''} ${meal.off ? 'is-off' : ''}">
-        <button class="meal-main" data-act="open-meal" data-day="${di}" data-meal="${mi}">
+        <button class="meal-main" data-act="open-meal" ${at} data-meal="${mi}">
           <span class="lbl">${SLOTS[meal.slot]}${meal.off ? ' · fuera de plan' : r ? ` · ${r.min} min${r.min > max ? ' ⚠︎' : ''}` : ''}${meal.diners > 1 ? ` · ${meal.diners} pers.` : ''}</span>
           <span class="mname">${esc(meal.off ? meal.off.desc : meal.name)}</span>
           <span class="chips-row">${macroChips(mm)}</span>
         </button>
-        ${meal.off ? '' : `<label class="check"><input type="checkbox" data-act="done" data-day="${di}" data-meal="${mi}" ${meal.done ? 'checked' : ''}>Hecha</label>`}
+        ${meal.off ? '' : `<label class="check"><input type="checkbox" data-act="done" ${at} data-meal="${mi}" ${meal.done ? 'checked' : ''}>Hecha</label>`}
       </div>`;
   }).join('');
 
   if (supplements.length) {
     html += `<div class="day-block supps"><div class="lbl">Suplementos · ${r0(P().supplementTotals(supplements).kcal)} kcal ya incluidas</div>${supplements.map((s) => `
-      <label><input type="checkbox" data-supp="${esc(s.id)}" data-day="${di}" ${d.supps?.[s.id] ? 'checked' : ''}>
+      <label><input type="checkbox" data-supp="${esc(s.id)}" ${at} ${d.supps?.[s.id] ? 'checked' : ''}>
       ${esc(s.name)} <span class="muted small">${P().perDay(s) !== 1 ? `${dec(P().perDay(s))} × ` : ''}${esc(s.timing || '')}</span></label>`).join('')}</div>`;
   }
 
-  if (tonight.length && di < 6) {
-    html += `<div class="day-block"><div class="lbl">Esta noche, para mañana</div>${tonight.map((x) => taskRow(x, plan)).join('')}</div>`;
+  if (tonight.length && di < plan.days.length - 1) {
+    html += `<div class="day-block"><div class="lbl">Esta noche, para mañana</div>${tonight.map((x) => taskRow(x, plan, w)).join('')}</div>`;
   }
 
   const err = m.kcal - config.kcal;
   if (d.meals.some((x) => x.off) && Math.abs(err) > config.kcal * 0.05 && d.meals.some((x) => !x.done && !x.off)) {
-    html += `<div class="day-block alert">Este día va ${err > 0 ? '+' : ''}${r0(err)} kcal sobre tu objetivo. <button class="btn small" data-act="rebalance" data-day="${di}">Reajustar lo que queda</button></div>`;
+    html += `<div class="day-block alert">Este día va ${err > 0 ? '+' : ''}${r0(err)} kcal sobre tu objetivo. <button class="btn small" data-act="rebalance" ${at}>Reajustar lo que queda</button></div>`;
   }
   return html + `</details>`;
 }
 
 // ---------- hoja de un plato ----------
 
-function openMeal(di, mi) {
-  const { plan, config } = S();
+function openMeal(w, di, mi) {
+  const { config } = S();
+  const plan = getPlan(w);
   const ctx = app.ctx();
   const day = plan.days[di];
   const meal = day.meals[mi];
@@ -226,7 +275,7 @@ function openMeal(di, mi) {
       <div class="row"><button class="btn" data-act="undo-off">Volver al plato del plan</button><button class="btn ghost" data-close>Cerrar</button></div>`,
     async (e) => {
       if (e.target.closest('[data-act="undo-off"]')) {
-        const plan2 = clone(S().plan);
+        const plan2 = clone(getPlan(w));
         plan2.days[di].meals[mi].off = null;
         P().solveDay(plan2.days[di], app.ctx());
         await app.savePlan(plan2);
@@ -268,21 +317,21 @@ function openMeal(di, mi) {
     <button class="btn ghost wide" data-close>Cerrar</button>`,
   async (e) => {
     if (e.type === 'change' && e.target.dataset.act === 'diners') {
-      const plan2 = clone(S().plan);
+      const plan2 = clone(getPlan(w));
       plan2.days[di].meals[mi].diners = Number(e.target.value);
       await app.savePlan(plan2);
-      return openMeal(di, mi);
+      return openMeal(w, di, mi);
     }
     if (e.type !== 'click') return;
     const act = e.target.closest('[data-act]')?.dataset.act;
-    if (act === 'toggle-done') { await setDone(di, mi, !meal.done); openMeal(di, mi); }
-    if (act === 'swap') openSwap(di, mi);
-    if (act === 'off') openOff(di, mi);
+    if (act === 'toggle-done') { await setDone(w, di, mi, !meal.done); openMeal(w, di, mi); }
+    if (act === 'swap') openSwap(w, di, mi);
+    if (act === 'off') openOff(w, di, mi);
   });
 }
 
-function openSwap(di, mi) {
-  const plan = S().plan;
+function openSwap(w, di, mi) {
+  const plan = getPlan(w);
   const ctx = app.ctx();
   const meal = plan.days[di].meals[mi];
   const alts = P().alternatives(ctx, plan, di, mi, 10);
@@ -296,16 +345,16 @@ function openSwap(di, mi) {
   async (e) => {
     const id = e.target.closest('[data-pick]')?.dataset.pick;
     if (!id) return;
-    const plan2 = clone(S().plan);
+    const plan2 = clone(getPlan(w));
     P().replaceMeal(app.ctx(), plan2, di, mi, app.ctx().recipeMap.get(id));
     await app.savePlan(plan2);
     toast('Plato cambiado y raciones del día reajustadas');
-    openMeal(di, mi);
+    openMeal(w, di, mi);
   });
 }
 
-function openOff(di, mi) {
-  const meal = S().plan.days[di].meals[mi];
+function openOff(w, di, mi) {
+  const meal = getPlan(w).days[di].meals[mi];
   app.openSheet(`
     <form class="stack" data-form="off">
       <h2>¿Qué has comido?</h2>
@@ -329,7 +378,7 @@ function openOff(di, mi) {
       c: f.c !== '' ? Number(f.c) : (kcal * 0.45) / 4,
       f: f.f !== '' ? Number(f.f) : (kcal * 0.35) / 9,
     };
-    const plan2 = clone(S().plan);
+    const plan2 = clone(getPlan(w));
     plan2.days[di].meals[mi].off = off;
     P().solveDay(plan2.days[di], app.ctx());
     await app.savePlan(plan2);
@@ -340,8 +389,8 @@ function openOff(di, mi) {
 
 // ---------- hecha: descontar de la despensa ----------
 
-async function setDone(di, mi, done) {
-  const plan = clone(S().plan);
+async function setDone(w, di, mi, done) {
+  const plan = clone(getPlan(w));
   const meal = plan.days[di].meals[mi];
   const ctx = app.ctx();
   const { db } = app;
@@ -368,7 +417,7 @@ async function setDone(di, mi, done) {
     meal.used = used;
     await app.savePlan(plan);
     toast(missing.length ? `Descontado. No tenías registrado: ${missing.join(', ')}` : 'Descontado de la despensa', {
-      label: 'Deshacer', run: () => setDone(di, mi, false),
+      label: 'Deshacer', run: () => setDone(w, di, mi, false),
     });
   } else {
     for (const u of meal.used || []) {
@@ -384,15 +433,23 @@ async function setDone(di, mi, done) {
 // ---------- eventos ----------
 
 async function onClick(e) {
+  const tabBtn = e.target.closest('[data-tab]');
+  if (tabBtn) {
+    tab = tabBtn.dataset.tab;
+    render();
+    window.scrollTo({ top: 0 });
+    return;
+  }
   const btn = e.target.closest('[data-act]');
   if (!btn || btn.matches('input')) return;
   const act = btn.dataset.act;
+  const w = btn.dataset.plan || 'plan';
   const di = Number(btn.dataset.day);
   const mi = Number(btn.dataset.meal);
-  if (act === 'open-meal') openMeal(di, mi);
+  if (act === 'open-meal') openMeal(w, di, mi);
   if (act === 'goto') app.openMore(btn.dataset.page);
   if (act === 'rebalance') {
-    const plan = clone(S().plan);
+    const plan = clone(getPlan(w));
     P().solveDay(plan.days[di], app.ctx());
     await app.savePlan(plan);
     toast('Comidas pendientes reajustadas');
@@ -401,17 +458,18 @@ async function onClick(e) {
 
 async function onChange(e) {
   const el = e.target;
-  if (el.dataset.act === 'done') return setDone(Number(el.dataset.day), Number(el.dataset.meal), el.checked);
+  const w = el.dataset.plan || 'plan';
+  if (el.dataset.act === 'done') return setDone(w, Number(el.dataset.day), Number(el.dataset.meal), el.checked);
 
   if (el.dataset.prep) {
-    const plan = clone(S().plan);
+    const plan = clone(getPlan(w));
     plan.prepDone = { ...(plan.prepDone || {}), [el.dataset.prep]: el.checked };
     if (!el.checked) delete plan.prepDone[el.dataset.prep];
     return app.savePlan(plan);
   }
 
   if (el.dataset.supp) {
-    const plan = clone(S().plan);
+    const plan = clone(getPlan(w));
     const day = plan.days[Number(el.dataset.day)];
     day.supps = { ...(day.supps || {}), [el.dataset.supp]: el.checked };
     const s = S().supplements.find((x) => x.id === el.dataset.supp);
@@ -423,27 +481,42 @@ async function onChange(e) {
   }
 }
 
-$('#view-plan')?.addEventListener('submit', async (e) => {
+// Generar: si la semana en curso sigue activa y el menú empieza después de ella, se
+// prepara como "semana siguiente" sin tocar la actual. Si se solapa, la sustituye.
+async function onSubmit(e) {
   if (e.target.dataset.form !== 'generate') return;
   e.preventDefault();
   const start = new FormData(e.target).get('start');
-  const { plan } = S();
-  if (plan && plan.days.some((d) => d.date >= todayISO() && d.meals.some((m) => !m.done)) && !confirm('¿Sustituir el menú actual por uno nuevo?')) return;
+  const { plan, nextPlan, prevPlan } = S();
   const ctx = app.ctx();
   if (!ctx.recipes.length) return toast('No hay recetas disponibles');
-  const next = P().generatePlan(ctx, start);
-  if (plan) await app.db.setSetting('prevPlan', plan);
-  await app.savePlan(next);
+  const today = todayISO();
+
+  if (isActive(plan) && start > P().planEnd(plan)) {
+    if (nextPlan && !confirm('¿Sustituir el menú de la semana siguiente?')) return;
+    const next = P().generatePlan({ ...ctx, activePlans: [plan], prevPlan: plan }, start);
+    tab = 'nextPlan';
+    await app.setPlans({ nextPlan: next });
+  } else {
+    const pending = plan && plan.days.some((d) => d.date >= today && d.meals.some((m) => !m.done && !m.off));
+    if (pending && !confirm('¿Sustituir el menú de esta semana por uno nuevo?')) return;
+    const keepNext = nextPlan && nextPlan.start > addDays(start, 6);
+    const fresh = P().generatePlan({ ...ctx, activePlans: keepNext ? [nextPlan] : [], prevPlan: plan || prevPlan }, start);
+    tab = 'plan';
+    await app.setPlans({ plan: fresh, prevPlan: plan || undefined, nextPlan: keepNext ? undefined : null });
+  }
   window.scrollTo({ top: 0 });
-  const missing = P().planNeeds(next, app.ctx()).length;
+  const missing = P().planNeeds(app.activePlans(), app.ctx()).length;
   toast(missing ? `Menú listo. Te faltan ${missing} cosas: están en Compra` : 'Menú listo con lo que tienes en casa');
-});
+}
 
 // Reajusta las raciones de los días que quedan (tras cambiar objetivos o suplementos).
 export async function resolvePlan() {
-  const plan = clone(S().plan);
-  if (!plan) return;
   const today = todayISO();
-  plan.days.filter((d) => d.date >= today).forEach((d) => P().solveDay(d, app.ctx()));
-  await app.savePlan(plan);
+  for (const w of ['plan', 'nextPlan']) {
+    const plan = clone(getPlan(w) || null);
+    if (!plan) continue;
+    plan.days.filter((d) => d.date >= today).forEach((d) => P().solveDay(d, app.ctx()));
+    await app.savePlan(plan);
+  }
 }

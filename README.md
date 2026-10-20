@@ -10,7 +10,12 @@ Web app (PWA) para llevar la despensa y comer según tus macros sin pensar cada 
   Nutri-Score, NOVA y valores por 100 g llegan de [Open Food Facts](https://world.openfoodfacts.org).
   Cada producto se vincula a un alimento genérico para usarlo en el menú. Fruta, carne o granel
   se añaden sin código, en gramos o unidades. Avisos de caducidad y de mínimos.
-- **Plan semanal** (sin IA): desayuno, comida y cena para 7 días.
+- **Registrar ticket**: foto del ticket en papel (OCR con Tesseract.js en el propio móvil) o PDF del
+  ticket digital (texto exacto con pdf.js). Reconoce cantidades, pesos en kg y tamaños de envase,
+  relaciona cada línea con su alimento aunque venga abreviada y lo revisas antes de guardarlo.
+- **Plan semanal** (sin IA): desayuno, comida y cena para 7 días. Puedes preparar el menú de la
+  semana siguiente (p. ej. el sábado antes de comprar) sin perder lo que queda de la actual; cuando
+  acaba la semana, la siguiente pasa a ser la actual.
   - Elige recetas según lo que tienes en casa, lo que caduca antes, la variedad (máx. 2 veces por
     semana, nunca días seguidos, pescado ≥ 3 veces) y lo que se aprovecha del batch cooking.
   - Ajusta las cantidades de cada día con un solver de mínimos cuadrados con límites para que el día
@@ -45,7 +50,8 @@ Abre la dirección en el móvil y:
 - **iPhone (Safari)**: Compartir → *Añadir a pantalla de inicio*.
 - **Android (Chrome)**: menú ⋮ → *Instalar app*.
 
-Funciona sin conexión salvo la búsqueda de productos nuevos en Open Food Facts.
+Funciona sin conexión salvo la búsqueda de productos nuevos en Open Food Facts y la primera lectura
+de un ticket (descarga el lector, unos 6 MB, desde jsDelivr).
 
 ## Al cambiar el código
 
@@ -64,6 +70,7 @@ Sube `VERSION` en `sw.js` para que los móviles descarguen la nueva versión.
 | `js/foods.js` | Tabla de alimentos y reconocimiento de productos |
 | `js/db.js` | Base de datos local |
 | `js/off.js` | Búsqueda en Open Food Facts |
+| `js/ticket.js`, `js/views/ticket.js` | Lectura del ticket (OCR / PDF) y revisión |
 | `js/scanner.js` | Lectura de códigos de barras |
 | `sw.js`, `manifest.webmanifest` | Instalación y uso sin conexión |
 | `vendor/zxing.min.js` | Lector de códigos para Safari (licencia Apache 2.0) |

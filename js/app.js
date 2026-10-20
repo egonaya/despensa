@@ -7,6 +7,7 @@ import { startScanner } from './scanner.js';
 import { $, $$, esc, todayISO, addDays, daysUntil, dec, fmtGrams, norm, toast, uid } from './util.js';
 import * as planView from './views/plan.js';
 import * as moreView from './views/more.js';
+import * as ticketView from './views/ticket.js';
 
 const SOON_DAYS = 7;
 
@@ -20,7 +21,8 @@ const state = {
   customRecipes: [],
   customFoods: [],
   config: P.withDefaults(),
-  plan: null,
+  plan: null,       // menú de la semana en curso
+  nextPlan: null,   // menú de la semana siguiente, preparado por adelantado
   prevPlan: null,
   ctx: null,
 };
@@ -41,10 +43,13 @@ function buildCtx() {
     recipeMap,
     labelNutr: P.labelNutrition(state.products),
     prevPlan: state.prevPlan,
+    activePlans: activePlans(),
   };
 }
 
 // ---------- utilidades de presentación ----------
+
+const activePlans = () => [state.plan, state.nextPlan].filter(Boolean);
 
 const byName = (a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' });
 const lowProducts = () => state.products.filter((p) => db.isLow(p)).sort(byName);
@@ -126,11 +131,20 @@ function foodOptions(selected, { allowNone = true, newFromLabel = false } = {}) 
 // ---------- carga y render ----------
 
 async function refresh() {
-  const [products, shopping, supplements, customRecipes, customFoods, config, plan, prevPlan] = await Promise.all([
+  let [products, shopping, supplements, customRecipes, customFoods, config, plan, nextPlan, prevPlan] = await Promise.all([
     db.allProducts(), db.allShopping(), db.allSupplements(), db.allRecipes(), db.allFoods(),
-    db.getSetting('config'), db.getSetting('plan'), db.getSetting('prevPlan'),
+    db.getSetting('config'), db.getSetting('plan'), db.getSetting('nextPlan'), db.getSetting('prevPlan'),
   ]);
-  Object.assign(state, { products, shopping, supplements, customRecipes, customFoods, plan, prevPlan, config: P.withDefaults(config || {}) });
+  // Cuando acaba la semana en curso, la siguiente pasa a ser la actual.
+  if (nextPlan && (!plan || P.planEnd(plan) < todayISO())) {
+    if (plan) await db.setSetting('prevPlan', plan);
+    prevPlan = plan || prevPlan;
+    plan = nextPlan;
+    nextPlan = null;
+    await db.setSetting('plan', plan);
+    await db.setSetting('nextPlan', null);
+  }
+  Object.assign(state, { products, shopping, supplements, customRecipes, customFoods, plan, nextPlan, prevPlan, config: P.withDefaults(config || {}) });
   state.ctx = buildCtx();
   render();
 }
@@ -162,7 +176,7 @@ function renderBadges() {
 }
 
 function shoppingCount() {
-  return P.planNeeds(state.plan, state.ctx).length + lowProducts().length + lowSupplements().length
+  return P.planNeeds(activePlans(), state.ctx).length + lowProducts().length + lowSupplements().length
     + state.shopping.filter((s) => !s.done).length;
 }
 
@@ -411,7 +425,7 @@ async function openProduct(id) {
 // ---------- lista de la compra ----------
 
 function renderShopping() {
-  const needs = P.planNeeds(state.plan, state.ctx);
+  const needs = P.planNeeds(activePlans(), state.ctx);
   const low = lowProducts().filter((p) => !needs.some((n) => n.food.id === p.foodId));
   const supps = lowSupplements();
   const extras = [...state.shopping].sort((a, b) => a.done - b.done || a.createdAt - b.createdAt);
@@ -512,7 +526,7 @@ $('#shopping-list').addEventListener('click', async (e) => {
   }
   if (act === 'bought-need') {
     const foodId = e.target.closest('[data-need]').dataset.need;
-    const need = P.planNeeds(state.plan, state.ctx).find((n) => n.food.id === foodId);
+    const need = P.planNeeds(activePlans(), state.ctx).find((n) => n.food.id === foodId);
     const { product, qty } = await addFoodToPantry(foodId, need.missing);
     await refresh();
     toast(`${need.food.name}: ${qtyText(foodId, need.missing)} a la despensa`, {
@@ -547,7 +561,7 @@ $('#shopping-list').addEventListener('click', async (e) => {
 
 $('#share-list').addEventListener('click', async () => {
   const lines = [];
-  const needs = P.planNeeds(state.plan, state.ctx);
+  const needs = P.planNeeds(activePlans(), state.ctx);
   for (const section of SHOP_SECTIONS) {
     const group = needs.filter((n) => (n.food.cat || 'Otros') === section);
     if (group.length) lines.push(`\n${section}`, ...group.map((n) => `• ${n.food.name}: ${qtyText(n.food.id, n.missing)}`));
@@ -783,11 +797,27 @@ export const app = {
   qtyText, stockText, thumb, foodOptions, expiryLabel, expiryClass,
   ctx: () => state.ctx,
   async saveConfig(config) { await db.setSetting('config', config); await refresh(); },
-  async savePlan(plan) { state.plan = plan; await db.setSetting('plan', plan); await refresh(); },
+  activePlans,
+  // Guarda un menú en su sitio: el de la semana siguiente o el de la semana en curso.
+  async savePlan(plan) {
+    const key = state.nextPlan && state.nextPlan.id === plan.id ? 'nextPlan' : 'plan';
+    state[key] = plan;
+    await db.setSetting(key, plan);
+    await refresh();
+  },
+  async setPlans({ plan, nextPlan, prevPlan }) {
+    if (prevPlan !== undefined) await db.setSetting('prevPlan', prevPlan);
+    if (plan !== undefined) await db.setSetting('plan', plan);
+    if (nextPlan !== undefined) await db.setSetting('nextPlan', nextPlan);
+    await refresh();
+  },
 };
 
 planView.init(app);
 moreView.init(app);
+ticketView.init(app);
+$('#ticket-pantry').addEventListener('click', () => app.openTicket());
+$('#ticket-shopping').addEventListener('click', () => app.openTicket());
 
 // ---------- arranque ----------
 

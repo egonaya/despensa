@@ -43,7 +43,10 @@
       </div>
       <div id="pantry-alert"></div>
       <ul id="pantry-list" class="list"></ul>
-      <button id="manual-add-pantry" class="btn ghost wide" type="button">Añadir sin código (fruta, carne, granel…)</button>
+      <div class="row wide-row">
+        <button id="ticket-pantry" class="btn" type="button">Registrar ticket</button>
+        <button id="manual-add-pantry" class="btn" type="button">Añadir sin código</button>
+      </div>
     </section>
 
     <!-- Compra -->
@@ -52,6 +55,7 @@
         <input id="shopping-input" placeholder="Añadir algo a la lista" autocomplete="off" enterkeyhint="done">
         <button class="btn primary" type="submit">Añadir</button>
       </form>
+      <button id="ticket-shopping" class="btn wide-top" type="button">¿Ya has comprado? Registra el ticket</button>
       <div id="shopping-list"></div>
       <button id="share-list" class="btn ghost wide" type="button">Compartir lista</button>
     </section>

@@ -374,3 +374,27 @@ table.mini td:first-child { width: 30%; }
 details.card { display: block; }
 details.card > summary { margin-bottom: 4px; }
 @media (max-width: 380px) { .ing-row { padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--line); } }
+
+/* semanas, ticket */
+.segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--surface-2); padding: 4px; border-radius: 12px; margin: 4px 0 6px; }
+.segmented button { border: 0; background: none; color: var(--text); font: inherit; font-weight: 600; padding: 8px 6px; border-radius: 9px; cursor: pointer; display: grid; gap: 1px; }
+.segmented button[aria-selected="true"] { background: var(--surface); box-shadow: var(--shadow); color: var(--brand); }
+.wide-row { margin-top: 16px; }
+.wide-top { width: 100%; margin: 0 0 12px; }
+.busy { display: flex; gap: 10px; align-items: center; padding: 18px 0; }
+.spin { width: 20px; height: 20px; border: 3px solid var(--line); border-top-color: var(--brand); border-radius: 50%; animation: spin 1s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+.ticket-row { display: flex; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); }
+.ticket-row.off .ticket-fields { opacity: .5; }
+.ticket-check input { width: 22px; height: 22px; accent-color: var(--brand); margin-top: 10px; }
+.ticket-fields { flex: 1; min-width: 0; display: grid; gap: 6px; }
+.ticket-fields input, .ticket-fields select { padding: 8px 10px; font-size: .95rem; }
+.ticket-qty { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 6px; }
+.ticket-qty .suffix { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: .8rem; font-weight: 500; }
+.ticket-qty .suffix input { min-width: 0; }
+.ticket-qty .suffix.date { grid-column: 1 / -1; }
+.ticket-qty .suffix.date input { flex: 1; }
+.warn-text { color: var(--warn); }
+details.raw pre { white-space: pre-wrap; font-size: .75rem; background: var(--surface-2); padding: 10px; border-radius: 10px; max-height: 240px; overflow: auto; }
+.sticky-actions { position: sticky; bottom: calc(-18px - var(--safe-b)); background: var(--bg); padding: 12px 0 calc(4px + var(--safe-b)); margin-top: 12px; border-top: 1px solid var(--line); }

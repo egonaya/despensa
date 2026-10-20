@@ -1,10 +1,10 @@
 // Service worker: guarda la app para que abra sin conexión.
 // Sube VERSION cada vez que cambies algún archivo para que los móviles se actualicen.
-const VERSION = 'despensa-v2';
+const VERSION = 'despensa-v3';
 const SHELL = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'js/app.js', 'js/db.js', 'js/off.js', 'js/scanner.js', 'js/util.js', 'js/foods.js',
-  'js/recipes.js', 'js/planner.js', 'js/views/plan.js', 'js/views/more.js', 'vendor/zxing.min.js',
+  'js/recipes.js', 'js/planner.js', 'js/views/plan.js', 'js/views/more.js', 'js/views/ticket.js', 'js/ticket.js', 'vendor/zxing.min.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];
 const IMAGES = 'despensa-images';

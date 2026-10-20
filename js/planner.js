@@ -217,6 +217,20 @@ function pickRecipe(ctx, slot, date, st, exceptId) {
 
 function newState(ctx, plan) {
   const { stock, expiry } = stockByFood(ctx);
+  // Lo que aún van a gastar las comidas pendientes de los otros menús activos
+  // (p. ej. el fin de semana de la semana en curso) no está disponible para este.
+  const today = todayISO();
+  for (const other of ctx.activePlans || []) {
+    if (other.id === plan.id) continue;
+    for (const d of other.days) {
+      if (d.date < today) continue;
+      for (const m of d.meals) {
+        if (m.done || m.off) continue;
+        const portions = portionsOf(m.diners, ctx.config);
+        m.items.forEach((i) => stock.set(i.food, Math.max(0, (stock.get(i.food) || 0) - i.g * portions)));
+      }
+    }
+  }
   const t = foodTargets(ctx.config, ctx.supplements);
   return {
     stock, expiry, chosen: [],
@@ -230,6 +244,8 @@ const chosenEntry = (r, slot, date, ctx) => ({
   recipeId: r.id, slot, date, prep: r.prep, main: mainProtein(r),
   fish: ctx.foods.get(mainProtein(r))?.tags.includes('pescado'),
 });
+
+export const planEnd = (plan) => addDays(plan.start, plan.days.length - 1);
 
 export function batchDateFor(start, config) {
   if (dow(addDays(start, -1)) === config.batchDow) return addDays(start, -1);
@@ -464,11 +480,13 @@ export function buildPrep(plan, ctx) {
 
 // ---------- lo que falta comprar ----------
 
-export function planNeeds(plan, ctx) {
-  if (!plan) return [];
+// Acepta uno o varios menús (semana en curso + la siguiente) y suma lo que piden.
+export function planNeeds(plans, ctx) {
+  plans = (Array.isArray(plans) ? plans : [plans]).filter(Boolean);
+  if (!plans.length) return [];
   const from = todayISO();
   const need = new Map();
-  for (const d of plan.days) {
+  for (const d of plans.flatMap((p) => p.days)) {
     if (d.date < from) continue;
     for (const m of d.meals) {
       if (m.done || m.off) continue;
