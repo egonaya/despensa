@@ -1,9 +1,10 @@
 // Service worker: guarda la app para que abra sin conexión.
 // Sube VERSION cada vez que cambies algún archivo para que los móviles se actualicen.
-const VERSION = 'despensa-v1';
+const VERSION = 'despensa-v2';
 const SHELL = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
-  'js/app.js', 'js/db.js', 'js/off.js', 'js/scanner.js', 'vendor/zxing.min.js',
+  'js/app.js', 'js/db.js', 'js/off.js', 'js/scanner.js', 'js/util.js', 'js/foods.js',
+  'js/recipes.js', 'js/planner.js', 'js/views/plan.js', 'js/views/more.js', 'vendor/zxing.min.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];
 const IMAGES = 'despensa-images';
@@ -36,7 +37,7 @@ self.addEventListener('fetch', (e) => {
 
   // Archivos de la app: primero red (para recibir cambios), si falla, caché.
   if (url.origin === location.origin) {
-    e.respondWith(fetch(e.request)
+    e.respondWith(fetch(e.request, { cache: 'no-cache' })
       .then((res) => {
         const copy = res.clone();
         caches.open(VERSION).then((c) => c.put(e.request, copy));

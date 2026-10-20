@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Despensa</title>
-  <meta name="description" content="Inventario de tu despensa con escáner de códigos de barras.">
+  <meta name="description" content="Tu despensa, tu menú semanal ajustado a tus macros y tu lista de la compra.">
   <meta name="theme-color" content="#1f6f4a">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
@@ -17,29 +17,33 @@
 </head>
 <body>
   <header class="topbar">
-    <h1 id="view-title">Despensa</h1>
+    <button id="back" class="back" type="button" aria-label="Volver" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <h1 id="view-title">Plan</h1>
     <span id="view-subtitle" class="subtitle"></span>
   </header>
 
   <main>
+    <!-- Plan semanal -->
+    <section id="view-plan" class="view" data-title="Plan"></section>
+
     <!-- Despensa -->
-    <section id="view-pantry" class="view" data-title="Despensa">
+    <section id="view-pantry" class="view" data-title="Despensa" hidden>
       <div class="search">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
         <input id="search" type="search" placeholder="Buscar en la despensa" autocomplete="off">
       </div>
       <div class="chips" role="tablist" aria-label="Filtro">
         <button class="chip active" data-filter="all">Todo</button>
-        <button class="chip" data-filter="low">Se acaba</button>
         <button class="chip" data-filter="expiring">Caduca pronto</button>
+        <button class="chip" data-filter="low">Se acaba</button>
         <button class="chip" data-filter="empty">Agotado</button>
+        <button class="chip" data-filter="unlinked">Sin vincular</button>
       </div>
+      <div id="pantry-alert"></div>
       <ul id="pantry-list" class="list"></ul>
-    </section>
-
-    <!-- Caducidad -->
-    <section id="view-expiry" class="view" data-title="Caducidad" hidden>
-      <div id="expiry-list"></div>
+      <button id="manual-add-pantry" class="btn ghost wide" type="button">Añadir sin código (fruta, carne, granel…)</button>
     </section>
 
     <!-- Compra -->
@@ -53,33 +57,17 @@
     </section>
 
     <!-- Más -->
-    <section id="view-more" class="view" data-title="Más" hidden>
-      <div class="card stats" id="stats"></div>
-      <div class="card">
-        <h2>Copia de seguridad</h2>
-        <p class="muted">Los datos solo se guardan en este dispositivo. Exporta una copia de vez en cuando, o para pasarlos a otro móvil.</p>
-        <div class="row">
-          <button id="export" class="btn" type="button">Exportar</button>
-          <label class="btn">Importar<input id="import" type="file" accept="application/json,.json" hidden></label>
-        </div>
-      </div>
-      <div class="card">
-        <h2>Añadir sin código</h2>
-        <p class="muted">Fruta, verdura, productos a granel…</p>
-        <button id="manual-add-2" class="btn" type="button">Añadir producto a mano</button>
-      </div>
-      <p class="muted small">Datos de productos de <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener">Open Food Facts</a> (licencia ODbL). Nutri-Score y NOVA son indicativos.</p>
-    </section>
+    <section id="view-more" class="view" data-title="Más" hidden></section>
   </main>
 
   <nav class="tabbar" aria-label="Secciones">
-    <button class="tab active" data-view="pantry">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16"/></svg>
-      <span>Despensa</span>
+    <button class="tab active" data-view="plan">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+      <span>Plan</span><i class="dot" id="plan-dot" hidden></i>
     </button>
-    <button class="tab" data-view="expiry">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/></svg>
-      <span>Caducidad</span><i class="dot" id="expiry-dot" hidden></i>
+    <button class="tab" data-view="pantry">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16"/></svg>
+      <span>Despensa</span><i class="dot" id="expiry-dot" hidden></i>
     </button>
     <button class="scan-fab" id="scan-btn" aria-label="Escanear producto">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M7 8v8M10 8v8M13 8v8M16 8v8"/></svg>
@@ -122,19 +110,32 @@
           <div id="pf-scores" class="scores"></div>
         </div>
       </div>
+      <label>Alimento para el menú
+        <select name="foodId" id="pf-food"></select>
+      </label>
       <label>Nombre<input name="name" required autocomplete="off"></label>
       <div class="grid2">
         <label>Marca<input name="brand" autocomplete="off"></label>
         <label>Formato<input name="quantityLabel" placeholder="500 g, 1 L…" autocomplete="off"></label>
       </div>
       <div class="grid2">
+        <label>Se cuenta en
+          <select name="unit">
+            <option value="ud">Unidades / envases</option>
+            <option value="g">Gramos</option>
+            <option value="ml">Mililitros</option>
+          </select>
+        </label>
+        <label id="pf-ug-wrap">Cada unidad pesa (g)<input name="unitGrams" type="number" min="1" step="any" inputmode="decimal"></label>
+      </div>
+      <div class="grid2">
         <label>Categoría<input name="category" autocomplete="off"></label>
-        <label>Avisar con menos de<input name="minStock" type="number" min="0" step="1" value="1" inputmode="numeric"></label>
+        <label><span id="pf-min-label">Avisar con menos de</span><input name="minStock" type="number" min="0" step="any" value="1" inputmode="decimal"></label>
       </div>
       <fieldset id="pf-initial">
         <legend>Lo que has comprado</legend>
         <div class="grid2">
-          <label>Unidades<input name="qty" type="number" min="0" step="1" value="1" inputmode="numeric"></label>
+          <label><span id="pf-qty-label">Unidades</span><input name="qty" type="number" min="0" step="any" value="1" inputmode="decimal"></label>
           <label>Caduca<input name="expiry" type="date"></label>
         </div>
       </fieldset>
@@ -146,7 +147,7 @@
     </form>
   </dialog>
 
-  <!-- Añadir unidades a un producto existente -->
+  <!-- Añadir cantidad a un producto existente -->
   <dialog id="stock-sheet" class="sheet">
     <form id="stock-form" method="dialog">
       <div class="sheet-head">
@@ -157,7 +158,7 @@
         </div>
       </div>
       <div class="grid2">
-        <label>Unidades<input name="qty" type="number" min="1" step="1" value="1" inputmode="numeric" required></label>
+        <label><span id="sf-qty-label">Unidades</span><input name="qty" type="number" min="0.01" step="any" value="1" inputmode="decimal" required></label>
         <label>Caduca<input name="expiry" type="date"></label>
       </div>
       <div class="row">
@@ -167,9 +168,9 @@
     </form>
   </dialog>
 
-  <!-- Detalle de producto -->
-  <dialog id="detail-sheet" class="sheet">
-    <div id="detail-body"></div>
+  <!-- Hoja genérica: detalle de producto, receta, plato, formularios… -->
+  <dialog id="sheet" class="sheet">
+    <div id="sheet-body"></div>
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>

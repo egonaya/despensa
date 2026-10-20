@@ -1,13 +1,34 @@
 # Despensa
 
-Web app (PWA) para llevar el inventario de la despensa: escaneas lo que compras,
-gastas unidades con el botón −, y la app te dice qué se acaba y qué caduca.
+Web app (PWA) para llevar la despensa y comer según tus macros sin pensar cada día qué cocinar.
 
-- **Escáner**: cámara del móvil (BarcodeDetector en Android, ZXing en iPhone) o código escrito a mano.
-- **Datos del producto**: nombre, marca, foto, Nutri-Score y NOVA desde [Open Food Facts](https://world.openfoodfacts.org).
-- **Stock por lotes**: cada compra guarda unidades y fecha de caducidad; al gastar se usa primero lo que antes caduca.
-- **Lista de la compra**: lo que baja del mínimo entra solo; también puedes añadir cosas a mano y compartir la lista.
-- **Sin servidor**: todo se guarda en el móvil (IndexedDB). Exporta una copia desde *Más*.
+**https://egonaya.github.io/despensa/**
+
+## Qué hace
+
+- **Despensa**: escaneas lo que compras (cámara del móvil o código escrito); nombre, foto,
+  Nutri-Score, NOVA y valores por 100 g llegan de [Open Food Facts](https://world.openfoodfacts.org).
+  Cada producto se vincula a un alimento genérico para usarlo en el menú. Fruta, carne o granel
+  se añaden sin código, en gramos o unidades. Avisos de caducidad y de mínimos.
+- **Plan semanal** (sin IA): desayuno, comida y cena para 7 días.
+  - Elige recetas según lo que tienes en casa, lo que caduca antes, la variedad (máx. 2 veces por
+    semana, nunca días seguidos, pescado ≥ 3 veces) y lo que se aprovecha del batch cooking.
+  - Ajusta las cantidades de cada día con un solver de mínimos cuadrados con límites para que el día
+    cuadre con tus kcal y macros, descontando antes lo que aportan los suplementos.
+  - Las comidas de días laborables se quedan en el tiempo que fijes (15 min por defecto) al llegar.
+  - **Batch cooking** del domingo con cantidades totales, y **tareas de la noche anterior**
+    (descongelar, overnight oats, bases que no aguantan desde el domingo).
+  - Comensales por comida: la ración de la segunda persona se escala a sus kcal.
+  - "Hecha" descuenta los ingredientes de la despensa (deshacer los devuelve). "He comido otra cosa"
+    apunta lo que comiste y reajusta lo que queda del día. "Cambiar plato" propone alternativas.
+- **Suplementos** (p. ej. HSN): kcal y macros por dosis, dosis al día, stock. Se marcan cada día,
+  se descuentan y pasan a la compra cuando queda menos de una semana.
+- **Lista de la compra**: lo que falta para el menú (por secciones del súper), lo que baja del
+  mínimo, suplementos y extras a mano. "Comprado" lo pasa a la despensa.
+- **Recetario** de 62 recetas mediterráneas rápidas; puedes crear las tuyas, duplicar y ocultar.
+- **Alimentos**: ~90 alimentos con valores de tablas españolas; puedes añadir los tuyos o crearlos
+  desde la etiqueta de un producto escaneado.
+- Todo se guarda en el móvil (IndexedDB). Copia de seguridad en *Más → Copia de seguridad*.
 
 ## Probar en el ordenador
 
@@ -15,13 +36,11 @@ gastas unidades con el botón −, y la app te dice qué se acaba y qué caduca.
 python3 -m http.server 5173 --directory despensa
 ```
 
-Abre http://localhost:5173. La cámara funciona en `localhost`.
+Abre http://localhost:5173.
 
 ## Usar en el móvil
 
-Los navegadores solo permiten la cámara en páginas **https**. Sube la carpeta
-`despensa/` a cualquier hosting estático con https (GitHub Pages, Netlify, Cloudflare Pages…),
-abre la dirección en el móvil y:
+Abre la dirección en el móvil y:
 
 - **iPhone (Safari)**: Compartir → *Añadir a pantalla de inicio*.
 - **Android (Chrome)**: menú ⋮ → *Instalar app*.
@@ -37,8 +56,13 @@ Sube `VERSION` en `sw.js` para que los móviles descarguen la nueva versión.
 | Archivo | Qué hace |
 |---|---|
 | `index.html`, `styles.css` | Interfaz |
-| `js/app.js` | Vistas y flujo (despensa, caducidad, compra, escáner) |
-| `js/db.js` | Base de datos local, stock y copia de seguridad |
+| `js/app.js` | Arranque, despensa, escáner, lista de la compra |
+| `js/views/plan.js` | Menú semanal, batch cooking, víspera, seguimiento del día |
+| `js/views/more.js` | Objetivos, suplementos, recetario, alimentos, copia |
+| `js/planner.js` | Elección de platos, solver de macros, preparaciones, lo que falta |
+| `js/recipes.js` | Recetario base y tareas que se adelantan |
+| `js/foods.js` | Tabla de alimentos y reconocimiento de productos |
+| `js/db.js` | Base de datos local |
 | `js/off.js` | Búsqueda en Open Food Facts |
 | `js/scanner.js` | Lectura de códigos de barras |
 | `sw.js`, `manifest.webmanifest` | Instalación y uso sin conexión |
