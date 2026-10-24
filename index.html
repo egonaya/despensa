@@ -139,7 +139,9 @@
       <fieldset id="pf-initial">
         <legend>Lo que has comprado</legend>
         <div class="grid2">
-          <label><span id="pf-qty-label">Unidades</span><input name="qty" type="number" min="0" step="any" value="1" inputmode="decimal"></label>
+          <label><span id="pf-qty-label">Unidades</span>
+            <span class="qty-stepper"><button type="button" data-step="-1" aria-label="Menos">−</button><input name="qty" type="number" min="0" step="any" value="1" inputmode="decimal"><button type="button" data-step="1" aria-label="Más">+</button></span>
+          </label>
           <label>Caduca<input name="expiry" type="date"></label>
         </div>
       </fieldset>
@@ -162,7 +164,9 @@
         </div>
       </div>
       <div class="grid2">
-        <label><span id="sf-qty-label">Unidades</span><input name="qty" type="number" min="0.01" step="any" value="1" inputmode="decimal" required></label>
+        <label><span id="sf-qty-label">Unidades</span>
+          <span class="qty-stepper"><button type="button" data-step="-1" aria-label="Menos">−</button><input name="qty" type="number" min="0.01" step="any" value="1" inputmode="decimal" required><button type="button" data-step="1" aria-label="Más">+</button></span>
+        </label>
         <label>Caduca<input name="expiry" type="date"></label>
       </div>
       <div class="row">

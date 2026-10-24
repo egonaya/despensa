@@ -119,6 +119,17 @@ export async function consume(id, qty = 1) {
   return { product, taken, missing: Math.max(0, left) };
 }
 
+// Corrección rápida con − / +: restar gasta de lo que antes caduca; sumar se añade al
+// lote más reciente (mantiene su caducidad) o crea uno sin fecha si no queda ninguno.
+export async function adjustStock(id, delta) {
+  if (delta < 0) return (await consume(id, -delta)).product;
+  const product = await getProduct(id);
+  const last = [...product.batches].sort((a, b) => b.addedAt - a.addedAt)[0];
+  if (last) last.qty += delta;
+  else product.batches.push({ id: uid(), qty: delta, expiry: null, addedAt: Date.now() });
+  return saveProduct(product);
+}
+
 // Fija la cantidad total: quita de lo que antes caduca o añade un lote nuevo.
 export async function setStock(id, qty, expiry) {
   const product = await getProduct(id);

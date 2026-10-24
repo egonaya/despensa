@@ -398,3 +398,13 @@ details.card > summary { margin-bottom: 4px; }
 .warn-text { color: var(--warn); }
 details.raw pre { white-space: pre-wrap; font-size: .75rem; background: var(--surface-2); padding: 10px; border-radius: 10px; max-height: 240px; overflow: auto; }
 .sticky-actions { position: sticky; bottom: calc(-18px - var(--safe-b)); background: var(--bg); padding: 12px 0 calc(4px + var(--safe-b)); margin-top: 12px; border-top: 1px solid var(--line); }
+
+/* − / + en cantidades */
+.stepper .count { min-width: 44px; padding: 0 2px; white-space: nowrap; }
+.stepper.big button { width: 44px; height: 44px; font-size: 1.4rem; }
+.stepper.big .count { font-size: 1.3rem; min-width: 64px; }
+.qty-stepper { display: grid; grid-template-columns: 44px 1fr 44px; gap: 6px; align-items: center; }
+.qty-stepper button { height: 44px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); font-size: 1.3rem; cursor: pointer; }
+.qty-stepper input { text-align: center; font-weight: 700; }
+form[data-form="set"] { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 8px; }
+form[data-form="set"] .btn { flex: none; }

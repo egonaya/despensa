@@ -71,6 +71,35 @@ function stockText(p) {
   return p.unit === 'ud' ? dec(n, n % 1 ? 1 : 0) : fmtGrams(n, p.unit);
 }
 
+// Paso de los botones − / +: una unidad, o 50 g / 50 ml en lo que se cuenta a peso.
+const stepOf = (p) => (p.unit === 'ud' ? 1 : 50);
+const stepText = (p) => (p.unit === 'ud' ? 'una' : `${stepOf(p)} ${p.unit}`);
+
+function stepper(p, big = false) {
+  const stock = db.stockOf(p);
+  return `
+    <div class="stepper ${big ? 'big' : ''}">
+      <button data-act="minus" aria-label="Quitar ${stepText(p)}" ${stock ? '' : 'disabled'}>−</button>
+      <span class="count">${stockText(p)}</span>
+      <button data-act="plus" aria-label="Añadir ${stepText(p)}">+</button>
+    </div>`;
+}
+
+// Los toques seguidos se aplican en orden, uno detrás de otro.
+let adjustQueue = Promise.resolve();
+function adjust(id, dir) {
+  adjustQueue = adjustQueue.then(async () => {
+    const before = await db.getProduct(id);
+    if (!before) return null;
+    const p = await db.adjustStock(id, dir * stepOf(before));
+    if (dir < 0 && db.stockOf(p) === 0) toast(`${p.name}: agotado, añadido a la compra`);
+    else if (dir < 0 && db.isLow(p) && !db.isLow(before)) toast(`${p.name}: se está acabando`);
+    await refresh();
+    return p;
+  }).catch(() => null);
+  return adjustQueue;
+}
+
 function expiryLabel(isoDate) {
   const days = daysUntil(isoDate);
   if (days === null) return '';
@@ -210,6 +239,21 @@ $$('.chip[data-filter]').forEach((c) => c.addEventListener('click', () => {
 
 $('#search').addEventListener('input', (e) => { state.query = e.target.value; renderPantry(); });
 
+// Botones − / + junto a un campo de cantidad (al escanear o registrar una compra).
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-step]');
+  if (!btn) return;
+  e.preventDefault();
+  const input = btn.closest('.qty-stepper').querySelector('input');
+  const inc = Number(input.dataset.inc) || 1;
+  const min = Number(input.min) > 0 ? inc : 0;
+  const now = Number(input.value) || 0;
+  // Si el valor no es múltiplo del paso (p. ej. 120 g), primero redondea a él.
+  const next = Number(btn.dataset.step) > 0 ? Math.floor(now / inc + 1e-9) * inc + inc : Math.ceil(now / inc - 1e-9) * inc - inc;
+  input.value = Math.max(min, Math.round(next * 100) / 100);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+});
+
 // Cerrar hojas con los botones [data-close] o tocando fuera.
 $$('dialog').forEach((d) => {
   d.addEventListener('click', (e) => {
@@ -275,13 +319,7 @@ function renderPantry() {
     if (!p.foodId) tags.push('<span class="tag">Sin vincular al menú</span>');
     if (p.nutriscore) tags.push(`<span class="ns ns-${p.nutriscore}">${p.nutriscore.toUpperCase()}</span>`);
     const meta = [p.brand, p.quantityLabel].filter(Boolean).join(' · ');
-    const control = p.unit === 'ud'
-      ? `<div class="stepper">
-          <button data-act="minus" aria-label="Gastar una" ${stock ? '' : 'disabled'}>−</button>
-          <span class="count">${stockText(p)}</span>
-          <button data-act="plus" aria-label="Añadir">+</button>
-        </div>`
-      : `<div class="amount">${stockText(p)}</div>`;
+    const control = stepper(p);
     return `
       <li class="item" data-id="${esc(p.id)}">
         ${thumb(p)}
@@ -300,13 +338,8 @@ async function onPantryClick(e) {
   if (!li) return;
   const id = li.dataset.id;
   const act = e.target.closest('[data-act]')?.dataset.act;
-  if (act === 'minus') {
-    const { product: p } = await db.consume(id, 1);
-    if (db.stockOf(p) === 0) toast(`${p.name}: agotado, añadido a la compra`);
-    else if (db.isLow(p)) toast(`${p.name}: se está acabando`);
-    await refresh();
-  } else if (act === 'plus') {
-    openStock(await db.getProduct(id));
+  if (act === 'minus' || act === 'plus') {
+    await adjust(id, act === 'minus' ? -1 : 1);
   } else {
     openProduct(id);
   }
@@ -324,7 +357,6 @@ async function openProduct(id) {
   const meta = [p.brand, p.quantityLabel, p.category].filter(Boolean).join(' · ');
   const food = p.foodId && state.ctx.foods.get(p.foodId);
   const n = p.per100 || food;
-  const unitLabel = p.unit === 'ud' ? (stock === 1 ? 'unidad' : 'unidades') : p.unit;
 
   openSheet(`
     <div class="sheet-head">
@@ -337,22 +369,20 @@ async function openProduct(id) {
     </div>
 
     <div class="card" style="margin-top:16px">
-      ${p.unit === 'ud' ? `
       <div class="row center">
         <div class="grow">
-          <b class="big">${stockText(p)}</b> ${unitLabel}
-          <div class="muted small">${p.minStock ? `Avisar con menos de ${dec(p.minStock)}` : 'Sin aviso de mínimo'}${p.unitGrams ? ` · ${fmtGrams(p.unitGrams)} cada una` : ''}</div>
+          <div class="lbl">En casa</div>
+          <div class="muted small">${p.minStock ? `Avisar con menos de ${p.unit === 'ud' ? dec(p.minStock) : fmtGrams(p.minStock, p.unit)}` : 'Sin aviso de mínimo'}${p.unit === 'ud' && p.unitGrams ? ` · ${fmtGrams(p.unitGrams)} cada una` : ''}</div>
+          <div class="muted small">− y + ${p.unit === 'ud' ? 'de 1 en 1' : `de ${stepOf(p)} en ${stepOf(p)} ${p.unit}`}</div>
         </div>
-        <div class="stepper">
-          <button data-act="minus" aria-label="Gastar una" ${stock ? '' : 'disabled'}>−</button>
-          <button data-act="plus" aria-label="Añadir">+</button>
-        </div>
-      </div>` : `
+        ${stepper(p, true)}
+      </div>
+      ${p.unit !== 'ud' ? `
       <form class="row center" data-form="set">
-        <label class="grow">Cantidad en casa (${p.unit})<input name="qty" type="number" min="0" step="any" value="${Math.round(stock)}" inputmode="decimal"></label>
+        <label class="grow">Cantidad exacta (${p.unit})<input name="qty" type="number" min="0" step="any" value="${Math.round(stock)}" inputmode="decimal"></label>
         <button class="btn" type="submit">Guardar</button>
-        <button class="btn" type="button" data-act="plus">Añadir</button>
-      </form>`}
+      </form>` : ''}
+      <button class="btn ghost small" type="button" data-act="buy">Registrar una compra con su caducidad</button>
       ${batches.length ? `<div>${batches.map((b) => `
         <div class="batch">
           <div class="grow">
@@ -408,8 +438,8 @@ async function openProduct(id) {
       return openProduct(id);
     }
     const act = e.target.closest('[data-act]')?.dataset.act;
-    if (act === 'minus') { await db.consume(id, 1); await refresh(); openProduct(id); }
-    if (act === 'plus') openStock(await db.getProduct(id));
+    if (act === 'minus' || act === 'plus') { await adjust(id, act === 'minus' ? -1 : 1); openProduct(id); }
+    if (act === 'buy') openStock(await db.getProduct(id));
     if (act === 'edit') { closeSheet(); openProductForm(await db.getProduct(id), '', true); }
     if (act === 'delete') {
       const prod = await db.getProduct(id);
@@ -654,6 +684,7 @@ function syncUnitFields() {
   const unit = f.unit.value;
   $('#pf-ug-wrap').hidden = unit !== 'ud';
   $('#pf-qty-label').textContent = unit === 'ud' ? 'Unidades' : `Cantidad (${unit})`;
+  f.qty.dataset.inc = unit === 'ud' ? 1 : 50;
   $('#pf-min-label').textContent = unit === 'ud' ? 'Avisar con menos de (ud.)' : `Avisar con menos de (${unit})`;
 }
 
@@ -770,6 +801,7 @@ function openStock(product, qty) {
   const food = state.ctx.foods.get(product.foodId);
   if (food?.keeps && food.keeps <= 30) stockForm.elements.expiry.value = addDays(todayISO(), food.keeps);
   $('#sf-qty-label').textContent = ud ? 'Unidades' : `Cantidad (${product.unit})`;
+  stockForm.elements.qty.dataset.inc = stepOf(product);
   $('#sf-title').textContent = product.name;
   $('#sf-note').textContent = `Ahora tienes ${stockText(product)}${ud ? (db.stockOf(product) === 1 ? ' unidad' : ' unidades') : ''}`;
   const img = $('#sf-image');
