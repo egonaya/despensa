@@ -621,6 +621,8 @@ const scannerSheet = $('#scanner-sheet');
 
 async function openScanner() {
   scannerSheet.showModal();
+  // Al abrir, el foco va a la hoja y no al campo: el teclado solo sale si se toca el campo.
+  if (document.activeElement === $('#manual-code')) scannerSheet.focus();
   $('#manual-code').value = '';
   const status = $('#scanner-status');
   status.textContent = 'Abriendo la cámara…';
