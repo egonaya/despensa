@@ -408,3 +408,15 @@ details.raw pre { white-space: pre-wrap; font-size: .75rem; background: var(--su
 .qty-stepper input { text-align: center; font-weight: 700; }
 form[data-form="set"] { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 8px; }
 form[data-form="set"] .btn { flex: none; }
+
+/* Ancho en iPhone (Safari): las filas de las listas y tarjetas en rejilla no deben crecer
+   para que quepa un nombre largo; el texto se recorta con "…" y − / + quedan a la vista. */
+html, body { max-width: 100%; overflow-x: clip; }
+main { width: 100%; }
+.list, .stack, .card { grid-template-columns: minmax(0, 1fr); }
+.list > *, .stack > *, .card > *, .item, .check-item, .meal, .ticket-row { min-width: 0; }
+.item-main, .meal-main, .ticket-fields { min-width: 0; overflow: hidden; }
+.item-name, .item-meta { max-width: 100%; }
+.stepper, .amount, .check { flex: none; }
+.card.stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.item .item-name { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; line-height: 1.25; }

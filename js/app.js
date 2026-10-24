@@ -238,6 +238,10 @@ $$('.chip[data-filter]').forEach((c) => c.addEventListener('click', () => {
 }));
 
 $('#search').addEventListener('input', (e) => { state.query = e.target.value; renderPantry(); });
+$('#pantry-alert').addEventListener('click', (e) => {
+  const go = e.target.closest('[data-filter-go]');
+  if (go) $(`.chip[data-filter="${go.dataset.filterGo}"]`).click();
+});
 
 // Botones − / + junto a un campo de cantidad (al escanear o registrar una compra).
 document.addEventListener('click', (e) => {
@@ -294,7 +298,7 @@ function renderPantry() {
 
   const soon = state.products.filter((p) => db.stockOf(p) > 0 && (daysUntil(db.nextExpiry(p)) ?? 99) <= 3);
   $('#pantry-alert').innerHTML = soon.length && state.filter === 'all' && !q
-    ? `<div class="alert"><b>Caduca pronto:</b> ${soon.map((p) => `${esc(p.name)} (${esc(expiryLabel(db.nextExpiry(p)).toLowerCase())})`).join(', ')}</div>` : '';
+    ? `<div class="alert"><b>Caduca pronto:</b> ${soon.sort((a, b) => db.nextExpiry(a).localeCompare(db.nextExpiry(b))).slice(0, 3).map((p) => `${esc(p.name)} (${esc(expiryLabel(db.nextExpiry(p)).toLowerCase())})`).join(', ')}${soon.length > 3 ? ` y ${soon.length - 3} más. <button class="linkbtn" data-filter-go="expiring">Ver todos</button>` : ''}</div>` : '';
 
   const list = $('#pantry-list');
   if (!state.products.length) {
