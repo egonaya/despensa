@@ -1,6 +1,6 @@
 // Service worker: guarda la app para que abra sin conexión.
 // Sube VERSION cada vez que cambies algún archivo para que los móviles se actualicen.
-const VERSION = 'despensa-v5';
+const VERSION = 'despensa-v6';
 const SHELL = [
   './', 'index.html', 'styles.css', 'manifest.webmanifest',
   'js/app.js', 'js/db.js', 'js/off.js', 'js/scanner.js', 'js/util.js', 'js/foods.js',

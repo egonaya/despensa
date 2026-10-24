@@ -206,6 +206,7 @@ legend { font-size: .85rem; color: var(--muted); padding: 0 4px; }
 .scan-fab svg { width: 28px; height: 28px; }
 
 /* ---- hojas (dialogs) ---- */
+.sheet:focus { outline: none; }
 .sheet {
   border: 0; padding: 18px 16px calc(18px + var(--safe-b)); margin: auto auto 0; width: 100%; max-width: 560px;
   border-radius: 20px 20px 0 0; background: var(--bg); color: var(--text);
